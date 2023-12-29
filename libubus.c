@@ -17,6 +17,7 @@
 #include <fcntl.h>
 
 #include <libubox/blob.h>
+#include <libubox/ulog.h>
 #include <libubox/blobmsg.h>
 
 #include "libubus.h"
@@ -401,7 +402,7 @@ static void ubus_auto_connect_cb(struct uloop_timeout *timeout)
 
 	if (ubus_connect_ctx(&conn->ctx, conn->path)) {
 		uloop_timeout_set(timeout, 1000);
-		fprintf(stderr, "failed to connect to ubus\n");
+		ULOG_ERR("failed to connect to ubus\n");
 		return;
 	}
 	conn->ctx.connection_lost = ubus_auto_disconnect_cb;

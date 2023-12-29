@@ -14,6 +14,8 @@
 #include <unistd.h>
 
 #include <libubox/blobmsg_json.h>
+#include <libubox/ulog.h>
+
 #include "libubus.h"
 
 static struct blob_buf b;
@@ -124,11 +126,11 @@ static int ubus_cli_error(char *cmd, int argc, char **argv, int err)
        int i;
 
        if (!simple_output && !isatty(fileno(stderr))) {
-	       fprintf(stderr, "Command failed: ubus %s ", cmd);
+	       ULOG_ERR("Command failed: ubus %s ", cmd);
 	       for (i = 0; i < argc; i++) {
-		       fprintf(stderr, "%s ", argv[i]);
+		       ULOG_ERR("%s ", argv[i]);
 	       }
-	       fprintf(stderr, "(%s)\n", ubus_strerror(err));
+	       ULOG_ERR("(%s)\n", ubus_strerror(err));
 
 	       return -err;
        }
@@ -228,7 +230,7 @@ static int ubus_cli_listen(struct ubus_context *ctx, int argc, char **argv)
 
 	if (ret) {
 		if (!simple_output)
-			fprintf(stderr, "Error while registering for event '%s': %s\n",
+			ULOG_ERR("Error while registering for event '%s': %s\n",
 				event, ubus_strerror(ret));
 		return -1;
 	}
@@ -251,7 +253,7 @@ static int ubus_cli_subscribe(struct ubus_context *ctx, int argc, char **argv)
 		event = argv[0];
 	} else {
 		if (!simple_output)
-			fprintf(stderr, "You need to specify an object to subscribe to\n");
+			ULOG_ERR("You need to specify an object to subscribe to\n");
 		return -1;
 	}
 
@@ -268,7 +270,7 @@ static int ubus_cli_subscribe(struct ubus_context *ctx, int argc, char **argv)
 
 	if (ret) {
 		if (!simple_output)
-			fprintf(stderr, "Error while registering for event '%s': %s\n",
+			ULOG_ERR("Error while registering for event '%s': %s\n",
 				event, ubus_strerror(ret));
 		return -1;
 	}
@@ -552,7 +554,7 @@ static int add_monitor_type(const char *type)
 
 static int usage(const char *prog)
 {
-	fprintf(stderr,
+	ULOG_ERR(
 		"Usage: %s [<options>] <command> [arguments...]\n"
 		"Options:\n"
 		" -s <socket>:		Set the unix domain socket to connect to\n"
@@ -599,6 +601,7 @@ int main(int argc, char **argv)
 	int ch;
 
 	progname = argv[0];
+	ulog_open(-1, -1, "ubus_cli");
 
 	while ((ch = getopt(argc, argv, "m:M:vs:t:S")) != -1) {
 		switch (ch) {
@@ -645,8 +648,7 @@ int main(int argc, char **argv)
 
 	ctx = ubus_connect(ubus_socket);
 	if (!ctx) {
-		if (!simple_output)
-			fprintf(stderr, "Failed to connect to ubus\n");
+		ULOG_ERR("Failed to connect to ubus\n");
 		return -1;
 	}
 
@@ -662,9 +664,19 @@ int main(int argc, char **argv)
 		break;
 	}
 
-	if (ret > 0 && !simple_output)
-		fprintf(stderr, "Command failed: %s\n", ubus_strerror(ret));
-	else if (ret == -2)
+	if (ret > 0) {
+		char buf[1024], *p, *buf_end = buf + sizeof(buf);
+		int cnt;
+
+		p = buf;
+		for (i = 0; i < (unsigned)argc; i++) {
+			cnt = snprintf(p, buf_end - p, "'%s' ", argv[i]);
+			p += cnt;
+			if (p >= buf_end)
+				break;
+		}
+		ULOG_ERR("Command '%s (%s)' failed: %s\n", cmd, buf, ubus_strerror(ret));
+	} else if (ret == -2)
 		usage(progname);
 
 	ubus_free(ctx);

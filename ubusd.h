@@ -16,6 +16,7 @@
 
 #include <libubox/list.h>
 #include <libubox/uloop.h>
+#include <libubox/ulog.h>
 #include <libubox/blobmsg.h>
 #include "ubus_common.h"
 #include "ubusd_id.h"

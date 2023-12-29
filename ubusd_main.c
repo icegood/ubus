@@ -14,6 +14,7 @@
 #include <syslog.h>
 
 #include <libubox/usock.h>
+#include <libubox/ulog.h>
 
 #include "ubusd.h"
 
@@ -237,7 +238,7 @@ static struct uloop_fd server_fd = {
 
 static int usage(const char *progname)
 {
-	fprintf(stderr, "Usage: %s [<options>]\n"
+	ULOG_ERR("Usage: %s [<options>]\n"
 		"Options: \n"
 		"  -A <path>:		Set the path to ACL files\n"
 		"  -s <socket>:		Set the unix domain socket to listen on\n"
@@ -271,11 +272,9 @@ int main(int argc, char **argv)
 	int ret = 0;
 	int ch;
 
-	signal(SIGPIPE, SIG_IGN);
 	signal(SIGHUP, sighup_handler);
 
 	ulog_open(ULOG_KMSG | ULOG_SYSLOG, LOG_DAEMON, "ubusd");
-	openlog("ubusd", LOG_PID, LOG_DAEMON);
 	uloop_init();
 
 	while ((ch = getopt(argc, argv, "A:s:")) != -1) {
@@ -304,9 +303,13 @@ int main(int argc, char **argv)
 	ubusd_acl_load();
 
 	uloop_run();
+
+	ULOG_ERR("ubus daemon finishes execution\n");
+
 	unlink(ubus_socket);
 
 out:
 	uloop_done();
+	ulog_close();
 	return ret;
 }

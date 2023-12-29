@@ -53,6 +53,8 @@ static struct blobmsg_policy evr_policy[] = {
 	[EVREG_OBJECT] = { .name = "object", .type = BLOBMSG_TYPE_INT32 },
 };
 
+static int delta;
+
 static int ubusd_alloc_event_pattern(struct ubus_client *cl, struct blob_attr *msg)
 {
 	struct event_source *ev;
@@ -63,12 +65,16 @@ static int ubusd_alloc_event_pattern(struct ubus_client *cl, struct blob_attr *m
 	bool partial = false;
 	int len;
 
+	delta = 0;
+
 	if (!msg)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	blobmsg_parse(evr_policy, EVREG_LAST, attr, blob_data(msg), blob_len(msg));
-	if (!attr[EVREG_OBJECT] || !attr[EVREG_PATTERN])
+	if (!attr[EVREG_OBJECT] || !attr[EVREG_PATTERN]) {
+		delta = 1000;
 		return UBUS_STATUS_INVALID_ARGUMENT;
+	}
 
 	id = blobmsg_get_u32(attr[EVREG_OBJECT]);
 	if (id < UBUS_SYSTEM_OBJECT_MAX)
@@ -78,9 +84,10 @@ static int ubusd_alloc_event_pattern(struct ubus_client *cl, struct blob_attr *m
 	if (!obj)
 		return UBUS_STATUS_NOT_FOUND;
 
-	if (obj->client != cl)
+	if (obj->client != cl) {
+		delta = 10000;
 		return UBUS_STATUS_PERMISSION_DENIED;
-
+	}
 	pattern = blobmsg_data(attr[EVREG_PATTERN]);
 
 	len = strlen(pattern);
@@ -93,8 +100,10 @@ static int ubusd_alloc_event_pattern(struct ubus_client *cl, struct blob_attr *m
 		len--;
 	}
 
-	if (ubusd_acl_check(cl, pattern, NULL, UBUS_ACL_LISTEN))
+	if (ubusd_acl_check(cl, pattern, NULL, UBUS_ACL_LISTEN)) {
+		delta = 20000;
 		return UBUS_STATUS_PERMISSION_DENIED;
+	}
 
 	ev = calloc(1, sizeof(*ev) + len + 1);
 	if (!ev)
@@ -233,13 +242,20 @@ static int ubusd_forward_event(struct ubus_client *cl, struct blob_attr *msg)
 
 static int ubusd_event_recv(struct ubus_client *cl, struct ubus_msg_buf *ub, const char *method, struct blob_attr *msg)
 {
+	int res = UBUS_STATUS_INVALID_COMMAND;
 	if (!strcmp(method, "register"))
-		return ubusd_alloc_event_pattern(cl, msg);
+		res = ubusd_alloc_event_pattern(cl, msg);
 
 	if (!strcmp(method, "send"))
-		return ubusd_forward_event(cl, msg);
-
-	return UBUS_STATUS_INVALID_COMMAND;
+		res = ubusd_forward_event(cl, msg);
+	if (res != 0) {
+		int id = -1;
+		if (cl) {
+			id = cl->id.id;
+		}
+		ULOG_ERR("ubusd_event_recv([%d],%s) returns %d", id, method, res+delta);
+	}
+	return res;
 }
 
 static struct ubus_msg_buf *
